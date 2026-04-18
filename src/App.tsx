@@ -1,20 +1,93 @@
-import { Button } from "@/components/ui/button"
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom"
+
+import { AppShell } from "@/components/layout/app-shell"
+import { AuthLayout } from "@/components/layout/auth-layout"
+import { ResetLayout } from "@/components/layout/reset-layout"
+import { MobileShell } from "@/components/mobile/mobile-shell"
+import { ForgotPasswordPage } from "@/pages/auth/forgot-password"
+import { LoginPage } from "@/pages/auth/login"
+import { NewPasswordPage } from "@/pages/auth/new-password"
+import { RegisterPage } from "@/pages/auth/register"
+import { VerifyOtpPage } from "@/pages/auth/verify-otp"
+import { WelcomePage } from "@/pages/auth/welcome"
+import { DashboardPage } from "@/pages/dashboard"
+import { OrdersPage } from "@/pages/orders"
+import { HistoryPage } from "@/pages/history"
+import { BillsPage } from "@/pages/bills"
+import { ProductsPage } from "@/pages/products"
+import { ProfilePage } from "@/pages/profile"
+import { SelectTablePage } from "@/pages/select-table"
+import { NotFoundPage } from "@/pages/not-found"
+import { MobileIndexPage } from "@/pages/mobile"
+import { MobilePinLoginPage } from "@/pages/mobile/pin-login"
+import { MobileHomePage } from "@/pages/mobile/home"
+import { MobileTableDetailPage } from "@/pages/mobile/table-detail"
+import { MobileMenuPage } from "@/pages/mobile/menu"
+import { MobileCartPage } from "@/pages/mobile/cart"
+import { MobileBillPreviewPage } from "@/pages/mobile/bill-preview"
+import { MobilePaymentPage } from "@/pages/mobile/payment"
+import { MobileCashPayPage } from "@/pages/mobile/cash-pay"
+import { MobileQrPayPage } from "@/pages/mobile/qr-pay"
+import { MobilePaymentSuccessPage } from "@/pages/mobile/payment-success"
+import { MobileHistoryPage } from "@/pages/mobile/history"
+import { MobileSettingsPage } from "@/pages/mobile/settings"
+import { MobileNotificationsPage } from "@/pages/mobile/notifications"
+import { PosProvider } from "@/store/pos-context"
 
 export function App() {
   return (
-    <div className="flex min-h-svh p-6">
-      <div className="flex max-w-md min-w-0 flex-col gap-4 text-sm leading-loose">
-        <div>
-          <h1 className="font-medium">Project ready!</h1>
-          <p>You may now add components and start building.</p>
-          <p>We&apos;ve already added the button component for you.</p>
-          <Button className="mt-2">Button</Button>
-        </div>
-        <div className="font-mono text-xs text-muted-foreground">
-          (Press <kbd>d</kbd> to toggle dark mode)
-        </div>
-      </div>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route index element={<Navigate to="/login" replace />} />
+
+        <Route element={<AuthLayout />}>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+        </Route>
+
+        <Route element={<ResetLayout />}>
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/forgot-password/verify" element={<VerifyOtpPage />} />
+          <Route path="/forgot-password/new" element={<NewPasswordPage />} />
+          <Route path="/forgot-password/welcome" element={<WelcomePage />} />
+        </Route>
+
+        <Route
+          element={
+            <PosProvider>
+              <AppShell />
+            </PosProvider>
+          }
+        >
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/select-table" element={<SelectTablePage />} />
+          <Route path="/orders" element={<OrdersPage />} />
+          <Route path="/history" element={<HistoryPage />} />
+          <Route path="/bills" element={<BillsPage />} />
+          <Route path="/products" element={<ProductsPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+        </Route>
+
+        <Route element={<MobileShell />}>
+          <Route path="/mobile" element={<MobileIndexPage />} />
+          <Route path="/mobile/pin-login" element={<MobilePinLoginPage />} />
+          <Route path="/mobile/home" element={<MobileHomePage />} />
+          <Route path="/mobile/table/:id" element={<MobileTableDetailPage />} />
+          <Route path="/mobile/menu" element={<MobileMenuPage />} />
+          <Route path="/mobile/cart" element={<MobileCartPage />} />
+          <Route path="/mobile/bill" element={<MobileBillPreviewPage />} />
+          <Route path="/mobile/payment" element={<MobilePaymentPage />} />
+          <Route path="/mobile/pay/cash" element={<MobileCashPayPage />} />
+          <Route path="/mobile/pay/qr" element={<MobileQrPayPage />} />
+          <Route path="/mobile/pay/success" element={<MobilePaymentSuccessPage />} />
+          <Route path="/mobile/history" element={<MobileHistoryPage />} />
+          <Route path="/mobile/settings" element={<MobileSettingsPage />} />
+          <Route path="/mobile/notifications" element={<MobileNotificationsPage />} />
+        </Route>
+
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </BrowserRouter>
   )
 }
 

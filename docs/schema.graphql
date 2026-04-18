@@ -1,0 +1,694 @@
+# ============================================================================
+# Kopag POS Dashboard — GraphQL Schema (FE proposal → BE)
+# Version: 0.1.0 (2026-04-17)
+# ----------------------------------------------------------------------------
+# Scope: auth, menu/products, tables, orders, bills, history, profile
+# (analytics, report, transactions, account settings).
+# ============================================================================
+
+# ---------- Scalars -------------------------------------------------------
+scalar DateTime       # ISO-8601, UTC, e.g. "2026-04-17T10:20:00Z"
+scalar Date           # ISO-8601 calendar date, e.g. "2026-04-17"
+scalar Decimal        # String-encoded fixed-point, e.g. "157.00" (money)
+scalar JSON           # Arbitrary JSON payload for ad-hoc metadata
+scalar Upload         # multipart/form-data file upload (graphql-upload)
+
+# ---------- Global enums --------------------------------------------------
+enum SortDirection { ASC DESC }
+
+# ---------- Pagination (Relay-style cursor) -------------------------------
+"""
+Relay connection arguments. Use `first`/`after` for forward pagination,
+`last`/`before` for backward. Server enforces `first <= 100`.
+"""
+input ConnectionArgs {
+  first: Int
+  after: String
+  last: Int
+  before: String
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+# ---------- Common result / error shapes ----------------------------------
+interface Node { id: ID! }
+
+"""
+Standard error payload returned inside union result types.
+`code` is a stable machine-readable key (e.g. UNAUTHENTICATED, NOT_FOUND,
+VALIDATION_FAILED, CONFLICT, RATE_LIMITED).
+"""
+type UserError {
+  code: String!
+  field: String
+  message: String!
+}
+
+type OperationResult {
+  success: Boolean!
+  errors: [UserError!]!
+}
+
+# ============================================================================
+# AUTH
+# ============================================================================
+
+type Viewer {
+  id: ID!
+  email: String!
+  name: String!
+  role: UserRole!
+  avatarUrl: String
+  restaurant: Restaurant
+}
+
+enum UserRole { OWNER MANAGER CASHIER WAITER }
+
+type Restaurant {
+  id: ID!
+  name: String!
+  address: String
+  phone: String
+  timezone: String!
+}
+
+type AuthSession {
+  accessToken: String!      # short-lived JWT (~15m)
+  refreshToken: String!     # rotated on every refresh (~30d)
+  expiresAt: DateTime!
+  viewer: Viewer!
+}
+
+union LoginResult = AuthSession | AuthError
+type AuthError { code: String! message: String! }
+
+input LoginInput {
+  email: String!
+  password: String!
+  rememberMe: Boolean = false
+}
+
+input RegisterInput {
+  name: String!
+  email: String!
+  password: String!
+  restaurantName: String!
+  phone: String
+}
+
+input ForgotPasswordInput { email: String! }
+input VerifyOtpInput { email: String! otp: String! }
+input ResetPasswordInput {
+  resetToken: String!       # issued after OTP verification
+  newPassword: String!
+}
+
+# ============================================================================
+# MENU / PRODUCTS
+# ============================================================================
+
+type MenuCategory implements Node {
+  id: ID!
+  name: String!
+  sortOrder: Int!
+}
+
+type MenuItem implements Node {
+  id: ID!
+  category: MenuCategory!
+  name: String!
+  description: String!
+  price: Decimal!
+  imageUrl: String
+  emoji: String
+  imageGradient: String     # fallback gradient for FE when imageUrl is null
+  stock: MenuStock!
+  isAvailable: Boolean!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+type MenuStock {
+  available: Int!
+  sold: Int!
+  reorderThreshold: Int
+}
+
+type MenuItemConnection {
+  edges: [MenuItemEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+type MenuItemEdge { cursor: String! node: MenuItem! }
+
+input MenuItemFilter {
+  search: String
+  categoryIds: [ID!]
+  availableOnly: Boolean
+}
+
+enum MenuItemSortField { NAME PRICE CREATED_AT SOLD }
+input MenuItemSort { field: MenuItemSortField! = CREATED_AT direction: SortDirection! = DESC }
+
+input CreateMenuItemInput {
+  categoryId: ID!
+  name: String!
+  description: String
+  price: Decimal!
+  image: Upload
+  emoji: String
+  initialStock: Int!
+}
+
+input UpdateMenuItemInput {
+  id: ID!
+  categoryId: ID
+  name: String
+  description: String
+  price: Decimal
+  image: Upload
+  emoji: String
+}
+
+# ============================================================================
+# TABLES
+# ============================================================================
+
+enum TableStatus { AVAILABLE OCCUPIED RESERVED }
+enum TableSize { SMALL LARGE }
+
+type DiningTable implements Node {
+  id: ID!
+  name: String!
+  seats: Int!
+  size: TableSize!
+  zone: String!
+  status: TableStatus!
+  currentOrder: Order
+}
+
+input TableFilter {
+  zones: [String!]
+  statuses: [TableStatus!]
+}
+
+input UpdateTableStatusInput {
+  tableId: ID!
+  status: TableStatus!
+}
+
+# ============================================================================
+# ORDERS
+# ============================================================================
+
+enum OrderStatus { PENDING PREPARING READY SERVED COMPLETED CANCELLED }
+enum ServiceMode { DINE_IN TAKE_AWAY }
+
+type Customer implements Node {
+  id: ID!
+  name: String!
+  phone: String
+}
+
+type OrderLine {
+  menuItem: MenuItem!
+  name: String!             # denormalized snapshot
+  unitPrice: Decimal!
+  quantity: Int!
+  note: String
+  lineTotal: Decimal!
+}
+
+type Order implements Node {
+  id: ID!
+  code: String!             # short human code, e.g. "1234"
+  customer: Customer
+  customerName: String!
+  table: DiningTable
+  mode: ServiceMode!
+  status: OrderStatus!
+  items: [OrderLine!]!
+  subtotal: Decimal!
+  tax: Decimal!
+  total: Decimal!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  bill: Bill                # null until checked out
+}
+
+type OrderConnection {
+  edges: [OrderEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+type OrderEdge { cursor: String! node: Order! }
+
+input OrderFilter {
+  search: String            # matches code, customer name, table name
+  statuses: [OrderStatus!]
+  modes: [ServiceMode!]
+  tableIds: [ID!]
+  dateFrom: DateTime
+  dateTo: DateTime
+}
+
+enum OrderSortField { CREATED_AT TOTAL CODE }
+input OrderSort { field: OrderSortField! = CREATED_AT direction: SortDirection! = DESC }
+
+input CreateOrderInput {
+  customerId: ID
+  customerName: String!
+  tableId: ID
+  mode: ServiceMode!
+  items: [OrderLineInput!]!
+}
+
+input OrderLineInput {
+  menuItemId: ID!
+  quantity: Int!
+  note: String
+}
+
+input UpdateOrderStatusInput {
+  orderId: ID!
+  status: OrderStatus!
+}
+
+input AddOrderItemsInput {
+  orderId: ID!
+  items: [OrderLineInput!]!
+}
+
+input UpdateOrderLineInput {
+  orderId: ID!
+  menuItemId: ID!
+  quantity: Int             # null → remove
+  note: String
+}
+
+# ============================================================================
+# BILLS (CHECKOUT / PAYMENT)
+# ============================================================================
+
+enum PaymentMethod { CASH CARD QR EWALLET }
+
+type Bill implements Node {
+  id: ID!
+  code: String!             # e.g. "B-20260417-0042"
+  order: Order!
+  customerName: String!
+  tableName: String
+  tableCode: String
+  items: [OrderLine!]!
+  subtotal: Decimal!
+  tax: Decimal!
+  total: Decimal!
+  paymentMethod: PaymentMethod!
+  paidAt: DateTime!
+  cashReceived: Decimal
+  changeDue: Decimal
+  receiptUrl: String        # pre-signed PDF URL
+}
+
+type BillConnection {
+  edges: [BillEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+type BillEdge { cursor: String! node: Bill! }
+
+input BillFilter {
+  search: String            # matches code, payment method, customer
+  paymentMethods: [PaymentMethod!]
+  dateFrom: DateTime
+  dateTo: DateTime
+}
+
+enum BillSortField { PAID_AT TOTAL }
+input BillSort { field: BillSortField! = PAID_AT direction: SortDirection! = DESC }
+
+input CheckoutOrderInput {
+  orderId: ID!
+  paymentMethod: PaymentMethod!
+  cashReceived: Decimal
+}
+
+# ============================================================================
+# HISTORY (order + bill unified timeline)
+# ============================================================================
+
+enum HistoryKind { ORDER BILL }
+
+type HistoryEntry {
+  id: ID!
+  kind: HistoryKind!
+  occurredAt: DateTime!
+  order: Order
+  bill: Bill
+}
+
+input HistoryFilter {
+  search: String
+  kinds: [HistoryKind!]
+  dateFrom: DateTime
+  dateTo: DateTime
+}
+
+# ============================================================================
+# PROFILE — ANALYTICS (dashboard + profile/analytics tab)
+# ============================================================================
+
+enum DateRangePreset { TODAY YESTERDAY LAST_7_DAYS LAST_30_DAYS MONTH_TO_DATE LAST_6_MONTHS LAST_YEAR CUSTOM }
+
+input DateRangeInput {
+  preset: DateRangePreset = LAST_30_DAYS
+  from: Date                # required if preset = CUSTOM
+  to: Date
+}
+
+type AnalyticsStat {
+  label: String!
+  value: Decimal!
+  previousValue: Decimal!
+  deltaPercent: Float!      # (value - previousValue) / previousValue
+  trend: StatTrend!
+}
+enum StatTrend { UP DOWN FLAT }
+
+type AnalyticsOverview {
+  totalSales: AnalyticsStat!
+  totalOrders: AnalyticsStat!
+  totalRevenue: AnalyticsStat!
+  cancelledOrders: AnalyticsStat!
+}
+
+type SalesSeriesPoint { label: String! date: Date! value: Decimal! }
+type SalesSeries {
+  points: [SalesSeriesPoint!]!
+  highlightedIndex: Int     # BE's suggested "peak" marker
+}
+
+type IncomeSegment { name: String! value: Decimal! color: String! }
+type IncomeBreakdown {
+  total: Decimal!
+  segments: [IncomeSegment!]!
+}
+
+type TrendingMenuItem {
+  item: MenuItem!
+  orderCount: Int!
+  deltaPercent: Float!
+}
+
+# ============================================================================
+# PROFILE — TRANSACTIONS (inventory/stock movement — the Transaction tab)
+# ============================================================================
+
+enum TransactionType { STOCK_IN STOCK_OUT ADJUSTMENT WASTE }
+
+type InventoryTransaction implements Node {
+  id: ID!
+  product: MenuItem!        # or a dedicated RawProduct entity — see note below
+  productName: String!
+  type: TransactionType!
+  quantityUsed: Int!        # numerator of "Quality" column
+  quantityTotal: Int!       # denominator
+  unit: String!             # e.g. "kg"
+  unitPrice: Decimal!
+  totalPrice: Decimal!
+  occurredAt: DateTime!
+  createdBy: Viewer!
+  note: String
+}
+
+type InventoryTransactionConnection {
+  edges: [InventoryTransactionEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+type InventoryTransactionEdge { cursor: String! node: InventoryTransaction! }
+
+input InventoryTransactionFilter {
+  search: String
+  types: [TransactionType!]
+  dateFrom: DateTime
+  dateTo: DateTime
+}
+
+enum InventoryTransactionSortField { OCCURRED_AT PRICE QUANTITY }
+input InventoryTransactionSort {
+  field: InventoryTransactionSortField! = OCCURRED_AT
+  direction: SortDirection! = DESC
+}
+
+input CreateInventoryTransactionInput {
+  productId: ID!
+  type: TransactionType!
+  quantityUsed: Int!
+  quantityTotal: Int!
+  unit: String!
+  unitPrice: Decimal!
+  occurredAt: DateTime
+  note: String
+}
+
+input UpdateInventoryTransactionInput {
+  id: ID!
+  type: TransactionType
+  quantityUsed: Int
+  quantityTotal: Int
+  unitPrice: Decimal
+  note: String
+}
+
+# ============================================================================
+# PROFILE — REPORT (report tab: payment-method breakdown)
+# ============================================================================
+
+enum ReportGranularity { DAILY WEEKLY MONTHLY }
+
+type ReportRow {
+  id: ID!
+  periodStart: DateTime!
+  paymentMethod: PaymentMethod!
+  totalCollected: Decimal!
+  transactionCount: Int!
+}
+
+type ReportConnection {
+  edges: [ReportRowEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+type ReportRowEdge { cursor: String! node: ReportRow! }
+
+input ReportFilter {
+  search: String
+  granularity: ReportGranularity! = DAILY
+  dateRange: DateRangeInput
+  paymentMethods: [PaymentMethod!]
+}
+
+# ============================================================================
+# PROFILE — ACCOUNT SETTINGS
+# ============================================================================
+
+input UpdateProfileInput {
+  name: String
+  email: String
+  phone: String
+  address: String
+  avatar: Upload
+}
+
+input UpdatePasswordInput {
+  currentPassword: String!
+  newPassword: String!
+}
+
+# ============================================================================
+# EXPORTS (Download buttons — Report + Transactions)
+# ============================================================================
+
+enum ExportFormat { CSV PDF XLSX }
+enum ExportKind { REPORT TRANSACTIONS BILLS ORDERS }
+
+type ExportJob {
+  id: ID!
+  kind: ExportKind!
+  format: ExportFormat!
+  status: ExportJobStatus!
+  downloadUrl: String       # populated when status = READY
+  expiresAt: DateTime
+  createdAt: DateTime!
+}
+enum ExportJobStatus { PENDING PROCESSING READY FAILED }
+
+input RequestExportInput {
+  kind: ExportKind!
+  format: ExportFormat! = CSV
+  dateRange: DateRangeInput
+  filter: JSON              # pass-through of the corresponding *Filter type
+}
+
+# ============================================================================
+# NOTIFICATIONS (header bell + messages circle)
+# ============================================================================
+
+enum NotificationLevel { INFO SUCCESS WARNING ERROR }
+
+type Notification implements Node {
+  id: ID!
+  level: NotificationLevel!
+  title: String!
+  body: String
+  readAt: DateTime
+  createdAt: DateTime!
+  link: String
+}
+
+type NotificationConnection {
+  edges: [NotificationEdge!]!
+  pageInfo: PageInfo!
+  unreadCount: Int!
+}
+type NotificationEdge { cursor: String! node: Notification! }
+
+# ============================================================================
+# ROOT — Query
+# ============================================================================
+
+type Query {
+  # --- Auth / viewer ------------------------------------------------------
+  viewer: Viewer
+
+  # --- Menu / products ----------------------------------------------------
+  menuCategories: [MenuCategory!]!
+  menuItems(
+    page: ConnectionArgs
+    filter: MenuItemFilter
+    sort: MenuItemSort
+  ): MenuItemConnection!
+  menuItem(id: ID!): MenuItem
+
+  # --- Tables -------------------------------------------------------------
+  tables(filter: TableFilter): [DiningTable!]!
+  table(id: ID!): DiningTable
+
+  # --- Orders -------------------------------------------------------------
+  orders(
+    page: ConnectionArgs
+    filter: OrderFilter
+    sort: OrderSort
+  ): OrderConnection!
+  order(id: ID!): Order
+
+  # --- Bills --------------------------------------------------------------
+  bills(
+    page: ConnectionArgs
+    filter: BillFilter
+    sort: BillSort
+  ): BillConnection!
+  bill(id: ID!): Bill
+
+  # --- History (unified) --------------------------------------------------
+  history(
+    page: ConnectionArgs
+    filter: HistoryFilter
+  ): [HistoryEntry!]!
+
+  # --- Profile: analytics -------------------------------------------------
+  analyticsOverview(dateRange: DateRangeInput): AnalyticsOverview!
+  salesSeries(dateRange: DateRangeInput): SalesSeries!
+  incomeBreakdown(dateRange: DateRangeInput): IncomeBreakdown!
+  trendingMenu(dateRange: DateRangeInput, limit: Int = 5): [TrendingMenuItem!]!
+  recentTransactions(limit: Int = 3): [InventoryTransaction!]!
+
+  # --- Profile: transactions (full list) ---------------------------------
+  inventoryTransactions(
+    page: ConnectionArgs
+    filter: InventoryTransactionFilter
+    sort: InventoryTransactionSort
+  ): InventoryTransactionConnection!
+  inventoryTransaction(id: ID!): InventoryTransaction
+
+  # --- Profile: report ----------------------------------------------------
+  report(
+    page: ConnectionArgs
+    filter: ReportFilter!
+  ): ReportConnection!
+
+  # --- Notifications ------------------------------------------------------
+  notifications(page: ConnectionArgs, unreadOnly: Boolean = false): NotificationConnection!
+
+  # --- Exports ------------------------------------------------------------
+  exportJob(id: ID!): ExportJob
+}
+
+# ============================================================================
+# ROOT — Mutation
+# ============================================================================
+
+type Mutation {
+  # --- Auth ---------------------------------------------------------------
+  login(input: LoginInput!): LoginResult!
+  register(input: RegisterInput!): LoginResult!
+  refreshSession(refreshToken: String!): AuthSession!
+  logout: OperationResult!
+
+  forgotPassword(input: ForgotPasswordInput!): OperationResult!
+  verifyOtp(input: VerifyOtpInput!): OperationResult!   # returns resetToken via userErrors-free path
+  resetPassword(input: ResetPasswordInput!): OperationResult!
+
+  # --- Menu / products ----------------------------------------------------
+  createMenuItem(input: CreateMenuItemInput!): MenuItem!
+  updateMenuItem(input: UpdateMenuItemInput!): MenuItem!
+  deleteMenuItem(id: ID!): OperationResult!
+  adjustMenuItemStock(id: ID!, delta: Int!): MenuItem!
+
+  # --- Tables -------------------------------------------------------------
+  updateTableStatus(input: UpdateTableStatusInput!): DiningTable!
+
+  # --- Orders -------------------------------------------------------------
+  createOrder(input: CreateOrderInput!): Order!
+  updateOrderStatus(input: UpdateOrderStatusInput!): Order!
+  addOrderItems(input: AddOrderItemsInput!): Order!
+  updateOrderLine(input: UpdateOrderLineInput!): Order!
+  cancelOrder(id: ID!, reason: String): Order!
+
+  # --- Bills / checkout ---------------------------------------------------
+  checkoutOrder(input: CheckoutOrderInput!): Bill!
+  voidBill(id: ID!, reason: String!): OperationResult!
+
+  # --- Profile: transactions ---------------------------------------------
+  createInventoryTransaction(input: CreateInventoryTransactionInput!): InventoryTransaction!
+  updateInventoryTransaction(input: UpdateInventoryTransactionInput!): InventoryTransaction!
+  deleteInventoryTransaction(id: ID!): OperationResult!
+
+  # --- Profile: account settings -----------------------------------------
+  updateProfile(input: UpdateProfileInput!): Viewer!
+  updatePassword(input: UpdatePasswordInput!): OperationResult!
+
+  # --- Notifications ------------------------------------------------------
+  markNotificationRead(id: ID!): Notification!
+  markAllNotificationsRead: OperationResult!
+
+  # --- Exports ------------------------------------------------------------
+  requestExport(input: RequestExportInput!): ExportJob!
+}
+
+# ============================================================================
+# ROOT — Subscription (optional, recommended for real-time POS)
+# ============================================================================
+
+type Subscription {
+  orderUpdated(statuses: [OrderStatus!]): Order!
+  tableUpdated: DiningTable!
+  notificationReceived: Notification!
+  exportJobUpdated(id: ID!): ExportJob!
+}
