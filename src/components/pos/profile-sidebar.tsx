@@ -1,4 +1,5 @@
 import {
+  BookMarked,
   ClipboardList,
   LogOut,
   MoreVertical,
@@ -6,6 +7,7 @@ import {
   Settings,
   Wallet,
 } from "lucide-react"
+import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -92,7 +94,14 @@ export function ProfileSidebar({ active, onChange, onLogout, className }: Props)
         })}
       </nav>
 
-      <div className="mt-auto border-t pt-4">
+      <div className="mt-auto flex flex-col gap-1 border-t pt-4">
+        <Link
+          to="/system"
+          className="flex items-center gap-3 rounded-xl bg-gradient-to-r from-blue-50 to-violet-50 px-4 py-2.5 text-sm font-semibold text-blue-700 hover:from-blue-100 hover:to-violet-100"
+        >
+          <BookMarked className="size-4" />
+          System Documentation
+        </Link>
         <button
           type="button"
           onClick={onLogout}

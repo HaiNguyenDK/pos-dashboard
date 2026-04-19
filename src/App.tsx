@@ -6,6 +6,7 @@ import { ResetLayout } from "@/components/layout/reset-layout"
 import { GuestShell } from "@/components/guest/guest-shell"
 import { KdsShell } from "@/components/kds/kds-shell"
 import { MobileShell } from "@/components/mobile/mobile-shell"
+import { SystemShell } from "@/components/system/system-shell"
 import { ForgotPasswordPage } from "@/pages/auth/forgot-password"
 import { LoginPage } from "@/pages/auth/login"
 import { NewPasswordPage } from "@/pages/auth/new-password"
@@ -23,6 +24,10 @@ import { BookingsPage } from "@/pages/bookings"
 import { InventoryPage } from "@/pages/inventory"
 import { HrPage } from "@/pages/hr"
 import { ReviewsPage } from "@/pages/reviews"
+import { SystemIndexPage } from "@/pages/system"
+import { SystemJourneyPage } from "@/pages/system/journey"
+import { SystemOperationsPage } from "@/pages/system/operations"
+import { SystemDataFlowPage } from "@/pages/system/data-flow"
 import { SelectTablePage } from "@/pages/select-table"
 import { NotFoundPage } from "@/pages/not-found"
 import { MobileIndexPage } from "@/pages/mobile"
@@ -116,6 +121,13 @@ export function App() {
           <Route path="/guest/:tableId/cart" element={<GuestCartPage />} />
           <Route path="/guest/:tableId/pay" element={<GuestPayPage />} />
           <Route path="/guest/:tableId/success" element={<GuestSuccessPage />} />
+        </Route>
+
+        <Route element={<SystemShell />}>
+          <Route path="/system" element={<SystemIndexPage />} />
+          <Route path="/system/journey" element={<SystemJourneyPage />} />
+          <Route path="/system/operations" element={<SystemOperationsPage />} />
+          <Route path="/system/data-flow" element={<SystemDataFlowPage />} />
         </Route>
 
         <Route element={<KdsShell />}>
