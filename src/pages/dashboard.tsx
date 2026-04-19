@@ -4,6 +4,7 @@ import { toast } from "sonner"
 import { useTranslation } from "react-i18next"
 
 import { CartPanel } from "@/components/pos/cart-panel"
+import { DashboardAlertStrip } from "@/components/pos/dashboard-alert-strip"
 import { MenuCard } from "@/components/pos/menu-card"
 import { MenuCategoryTabs } from "@/components/pos/menu-category-tabs"
 import { OrderListStrip } from "@/components/pos/order-list-strip"
@@ -81,6 +82,8 @@ export function DashboardPage() {
   return (
     <div className="grid min-h-[calc(100svh-6rem)] grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
       <div className="flex min-w-0 flex-col gap-6">
+        <DashboardAlertStrip />
+
         <OrderListStrip
           orders={ORDERS}
           onSeeAll={() => navigate("/orders")}

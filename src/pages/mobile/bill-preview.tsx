@@ -1,11 +1,14 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { Percent, Scissors, Tag } from "lucide-react"
+import { Gift, Percent, Scissors, Sparkles, Tag, Ticket, X } from "lucide-react"
 
+import { LoyaltySheet } from "@/components/mobile/loyalty-sheet"
 import { MobileHeader } from "@/components/mobile/mobile-header"
+import { VoucherSheet } from "@/components/mobile/voucher-sheet"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
+import { TIER_META, type LoyaltyCustomer, type Voucher } from "@/mocks/queue"
 
 type BillLine = {
   id: string
@@ -29,17 +32,66 @@ export function MobileBillPreviewPage() {
   const navigate = useNavigate()
   const [discount, setDiscount] = useState(20)
   const [tip, setTip] = useState(30)
+  const [voucher, setVoucher] = useState<Voucher | null>(null)
+  const [customer, setCustomer] = useState<LoyaltyCustomer | null>(null)
+  const [voucherOpen, setVoucherOpen] = useState(false)
+  const [loyaltyOpen, setLoyaltyOpen] = useState(false)
 
   const subtotal = LINES.reduce((s, l) => s + l.unitPrice * l.qty, 0)
   const tax = subtotal * TAX_RATE
   const service = subtotal * SERVICE_RATE
-  const total = subtotal + tax + service - discount + tip
+
+  const voucherDiscount = voucher
+    ? voucher.type === "percent"
+      ? (subtotal * voucher.value) / 100
+      : voucher.type === "fixed"
+        ? voucher.value
+        : 0
+    : 0
+
+  const total = Math.max(
+    0,
+    subtotal + tax + service - discount - voucherDiscount + tip
+  )
+
+  const pointsEarned = customer
+    ? Math.floor(total * TIER_META[customer.tier].ptPerDollar)
+    : 0
 
   return (
     <div className="flex h-full flex-col bg-slate-50">
       <MobileHeader title="Hoá đơn" subtitle="Đơn #1234 · Bàn A3" />
 
       <div className="flex-1 overflow-y-auto p-4 pb-48">
+        {customer ? (
+          <LoyaltyBadge
+            customer={customer}
+            pointsEarned={pointsEarned}
+            onRemove={() => setCustomer(null)}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setLoyaltyOpen(true)}
+            className="mb-3 flex w-full items-center justify-between rounded-2xl border-2 border-dashed border-violet-200 bg-violet-50/50 px-4 py-3 transition-colors hover:bg-violet-50"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-10 items-center justify-center rounded-xl bg-violet-100 text-violet-600">
+                <Gift className="size-4" />
+              </div>
+              <div className="text-left">
+                <div className="text-sm font-bold text-slate-900">
+                  Khách hàng thân thiết?
+                </div>
+                <div className="text-[11px] text-slate-500">
+                  Gắn số điện thoại để tích điểm
+                </div>
+              </div>
+            </div>
+            <span className="text-violet-600">→</span>
+          </button>
+        )}
+
         <div className="rounded-2xl bg-white p-4">
           <div className="flex items-center justify-between border-b border-dashed pb-3">
             <div>
@@ -87,6 +139,14 @@ export function MobileBillPreviewPage() {
                 onRemove={() => setDiscount(0)}
               />
             ) : null}
+            {voucher ? (
+              <Row
+                label={`Voucher (${voucher.code})`}
+                value={`−${formatCurrency(voucherDiscount)}`}
+                valueClass="text-blue-600"
+                onRemove={() => setVoucher(null)}
+              />
+            ) : null}
             {tip > 0 ? (
               <Row
                 label="Tip"
@@ -105,7 +165,13 @@ export function MobileBillPreviewPage() {
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-3 gap-2">
+        <div className="mt-4 grid grid-cols-4 gap-2">
+          <ActionChip
+            icon={Ticket}
+            label="Voucher"
+            active={!!voucher}
+            onClick={() => setVoucherOpen(true)}
+          />
           <ActionChip
             icon={Tag}
             label="Giảm giá"
@@ -124,6 +190,19 @@ export function MobileBillPreviewPage() {
             onClick={() => navigate("/mobile/bill/split")}
           />
         </div>
+
+        {pointsEarned > 0 ? (
+          <div className="mt-3 flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 px-3 py-2.5 text-white">
+            <Sparkles className="size-4" />
+            <span className="flex-1 text-sm font-semibold">
+              Sẽ cộng{" "}
+              <b className="font-black tabular-nums">
+                +{pointsEarned.toLocaleString()}
+              </b>{" "}
+              điểm sau khi thanh toán
+            </span>
+          </div>
+        ) : null}
       </div>
 
       <div className="absolute right-0 bottom-0 left-0 border-t bg-white px-4 py-3">
@@ -134,6 +213,90 @@ export function MobileBillPreviewPage() {
           Chọn phương thức thanh toán
         </Button>
       </div>
+
+      <VoucherSheet
+        open={voucherOpen}
+        subtotal={subtotal}
+        onClose={() => setVoucherOpen(false)}
+        onApply={(v) => {
+          setVoucher(v)
+          setVoucherOpen(false)
+        }}
+      />
+      <LoyaltySheet
+        open={loyaltyOpen}
+        onClose={() => setLoyaltyOpen(false)}
+        onSelect={(c) => {
+          setCustomer(c)
+          setLoyaltyOpen(false)
+        }}
+      />
+    </div>
+  )
+}
+
+function LoyaltyBadge({
+  customer,
+  pointsEarned,
+  onRemove,
+}: {
+  customer: LoyaltyCustomer
+  pointsEarned: number
+  onRemove: () => void
+}) {
+  const tier = TIER_META[customer.tier]
+  return (
+    <div
+      className={cn(
+        "mb-3 flex items-center gap-3 rounded-2xl border-2 p-3",
+        tier.bg,
+        tier.ring.replace("ring-", "border-")
+      )}
+    >
+      <div
+        className={cn(
+          "flex size-12 items-center justify-center rounded-xl bg-white text-2xl ring-2",
+          tier.ring
+        )}
+      >
+        {tier.icon}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-sm font-bold text-slate-900">
+            {customer.name}
+          </span>
+          <span
+            className={cn(
+              "rounded-full bg-white px-2 py-0.5 text-[10px] font-black uppercase tracking-wide",
+              tier.text
+            )}
+          >
+            {tier.label}
+          </span>
+        </div>
+        <div className="mt-0.5 font-mono text-[11px] text-slate-600">
+          {customer.phone}
+        </div>
+        <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-700">
+          <span className="inline-flex items-center gap-0.5 font-semibold">
+            <Sparkles className="size-3" />
+            {customer.points.toLocaleString()} điểm
+          </span>
+          <span>·</span>
+          <span className="text-emerald-700 font-semibold">
+            +{pointsEarned.toLocaleString()} sau đơn này
+          </span>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label="Bỏ liên kết khách"
+        className="flex size-8 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-white/70"
+      >
+        <X className="size-4" />
+      </button>
     </div>
   )
 }

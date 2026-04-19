@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom"
 import { AppShell } from "@/components/layout/app-shell"
 import { AuthLayout } from "@/components/layout/auth-layout"
 import { ResetLayout } from "@/components/layout/reset-layout"
+import { GuestShell } from "@/components/guest/guest-shell"
 import { KdsShell } from "@/components/kds/kds-shell"
 import { MobileShell } from "@/components/mobile/mobile-shell"
 import { ForgotPasswordPage } from "@/pages/auth/forgot-password"
@@ -17,6 +18,11 @@ import { HistoryPage } from "@/pages/history"
 import { BillsPage } from "@/pages/bills"
 import { ProductsPage } from "@/pages/products"
 import { ProfilePage } from "@/pages/profile"
+import { QueuePage } from "@/pages/queue"
+import { BookingsPage } from "@/pages/bookings"
+import { InventoryPage } from "@/pages/inventory"
+import { HrPage } from "@/pages/hr"
+import { ReviewsPage } from "@/pages/reviews"
 import { SelectTablePage } from "@/pages/select-table"
 import { NotFoundPage } from "@/pages/not-found"
 import { MobileIndexPage } from "@/pages/mobile"
@@ -34,6 +40,11 @@ import { MobilePaymentSuccessPage } from "@/pages/mobile/payment-success"
 import { MobileHistoryPage } from "@/pages/mobile/history"
 import { MobileSettingsPage } from "@/pages/mobile/settings"
 import { MobileNotificationsPage } from "@/pages/mobile/notifications"
+import { GuestWelcomePage } from "@/pages/guest/welcome"
+import { GuestMenuPage } from "@/pages/guest/menu"
+import { GuestCartPage } from "@/pages/guest/cart"
+import { GuestPayPage } from "@/pages/guest/pay"
+import { GuestSuccessPage } from "@/pages/guest/success"
 import { KdsStationPickerPage } from "@/pages/kds"
 import { KdsGridPage } from "@/pages/kds/grid"
 import { KdsTicketDetailPage } from "@/pages/kds/ticket-detail"
@@ -74,6 +85,11 @@ export function App() {
           <Route path="/bills" element={<BillsPage />} />
           <Route path="/products" element={<ProductsPage />} />
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/queue" element={<QueuePage />} />
+          <Route path="/bookings" element={<BookingsPage />} />
+          <Route path="/inventory" element={<InventoryPage />} />
+          <Route path="/hr" element={<HrPage />} />
+          <Route path="/reviews" element={<ReviewsPage />} />
         </Route>
 
         <Route element={<MobileShell />}>
@@ -92,6 +108,14 @@ export function App() {
           <Route path="/mobile/history" element={<MobileHistoryPage />} />
           <Route path="/mobile/settings" element={<MobileSettingsPage />} />
           <Route path="/mobile/notifications" element={<MobileNotificationsPage />} />
+        </Route>
+
+        <Route element={<GuestShell />}>
+          <Route path="/guest/:tableId" element={<GuestWelcomePage />} />
+          <Route path="/guest/:tableId/menu" element={<GuestMenuPage />} />
+          <Route path="/guest/:tableId/cart" element={<GuestCartPage />} />
+          <Route path="/guest/:tableId/pay" element={<GuestPayPage />} />
+          <Route path="/guest/:tableId/success" element={<GuestSuccessPage />} />
         </Route>
 
         <Route element={<KdsShell />}>

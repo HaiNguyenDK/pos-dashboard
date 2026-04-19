@@ -690,6 +690,477 @@ input MarkMenuItemUnavailableInput {
 enum UnavailableDuration { FIFTEEN_MIN END_OF_SHIFT END_OF_DAY INDEFINITE }
 
 # ============================================================================
+# WAITLIST (HOST / HÀNG ĐỢI LỄ TÂN)
+# ============================================================================
+
+enum WaitlistStatus { WAITING NOTIFIED SEATED CANCELLED NO_SHOW }
+
+type WaitlistEntry implements Node {
+  id: ID!
+  code: String!                     # vd "Q-042"
+  customerName: String!
+  phone: String!
+  partySize: Int!
+  preferredZone: String             # "A" | "B" | "C" | "any"
+  note: String
+  status: WaitlistStatus!
+  estimatedMinutes: Int!
+  createdAt: DateTime!
+  notifiedAt: DateTime
+  seatedAt: DateTime
+  seatedTable: DiningTable
+  smsCount: Int!
+}
+
+input WaitlistFilter {
+  search: String
+  statuses: [WaitlistStatus!]
+}
+
+input CreateWaitlistEntryInput {
+  customerName: String!
+  phone: String!
+  partySize: Int!
+  preferredZone: String
+  note: String
+}
+
+input SeatWaitlistEntryInput {
+  entryId: ID!
+  tableId: ID!
+}
+
+# ============================================================================
+# VOUCHER / PROMOTION
+# ============================================================================
+
+enum VoucherType { PERCENT FIXED FREE_ITEM }
+enum VoucherScope { ALL FOOD DRINK }
+
+type Voucher implements Node {
+  id: ID!
+  code: String!                     # unique, human-friendly
+  label: String!
+  type: VoucherType!
+  value: Decimal!
+  minSpend: Decimal
+  appliesTo: VoucherScope!
+  startsAt: DateTime
+  expiresAt: DateTime
+  usageLimit: Int                   # null = unlimited
+  usedCount: Int!
+  isActive: Boolean!
+}
+
+type VoucherApplication {
+  voucher: Voucher!
+  discountAmount: Decimal!          # computed against subtotal + scope
+  valid: Boolean!
+  errorCode: String                 # EXPIRED, MIN_SPEND, USAGE_EXCEEDED...
+  errorMessage: String
+}
+
+input ApplyVoucherInput {
+  orderId: ID!
+  code: String!
+}
+
+# ============================================================================
+# CUSTOMER / LOYALTY
+# ============================================================================
+
+enum LoyaltyTier { NEW SILVER GOLD PLATINUM }
+
+type LoyaltyCustomer implements Node {
+  id: ID!
+  name: String!
+  phone: String!
+  email: String
+  tier: LoyaltyTier!
+  points: Int!
+  visits: Int!
+  totalSpent: Decimal!
+  lastVisitAt: DateTime
+  birthday: Date
+  createdAt: DateTime!
+}
+
+input LoyaltyLookupInput {
+  phone: String
+  query: String                     # partial name or phone
+}
+
+input CreateLoyaltyCustomerInput {
+  name: String!
+  phone: String!
+  email: String
+  birthday: Date
+}
+
+input AttachCustomerToOrderInput {
+  orderId: ID!
+  customerId: ID!
+}
+
+"""
+Redeem reward points (deduct from balance, apply as order discount). 1 point
+usually worth a fixed fraction (e.g. 1pt = $0.01). BE enforces tier rules.
+"""
+input RedeemPointsInput {
+  orderId: ID!
+  customerId: ID!
+  points: Int!
+}
+
+# ============================================================================
+# BOOKING (RESERVATION)
+# ============================================================================
+
+enum BookingStatus { PENDING CONFIRMED ARRIVED CANCELLED NO_SHOW }
+enum BookingSource { PHONE WALKIN APP WEB PARTNER }
+
+type Booking implements Node {
+  id: ID!
+  code: String!                     # "BK-1042"
+  customer: LoyaltyCustomer         # null if walk-in unregistered
+  customerName: String!
+  phone: String!
+  email: String
+  partySize: Int!
+  date: Date!
+  time: String!                     # "19:30" HH:mm
+  duration: Int!                    # phút
+  table: DiningTable                # resolved when confirmed
+  tables: [DiningTable!]!           # nhiều bàn nếu ghép
+  status: BookingStatus!
+  source: BookingSource!
+  deposit: Decimal
+  depositPaid: Boolean!
+  specialRequests: String
+  remindersSent: Int!
+  createdAt: DateTime!
+  arrivedAt: DateTime
+  cancelledAt: DateTime
+}
+
+input BookingFilter {
+  search: String
+  statuses: [BookingStatus!]
+  dateFrom: Date
+  dateTo: Date
+}
+
+input CreateBookingInput {
+  customerName: String!
+  phone: String!
+  email: String
+  partySize: Int!
+  date: Date!
+  time: String!
+  duration: Int = 90
+  source: BookingSource = PHONE
+  deposit: Decimal
+  specialRequests: String
+  tableIds: [ID!]
+}
+
+input UpdateBookingInput {
+  id: ID!
+  partySize: Int
+  date: Date
+  time: String
+  duration: Int
+  tableIds: [ID!]
+  specialRequests: String
+}
+
+# ============================================================================
+# GUEST SELF-ORDER (CUSTOMER-FACING QR APP)
+# ============================================================================
+
+"""
+Session tied to a QR code sticker on the table. Guests scan → GET /guest/{code}
+resolves to `GuestSession` on BE. No auth required; rate-limited by IP + table.
+"""
+type GuestSession {
+  id: ID!
+  table: DiningTable!
+  order: Order                      # null until first item added
+  expiresAt: DateTime!
+}
+
+input StartGuestSessionInput {
+  tableQrCode: String!              # payload inside QR sticker
+}
+
+input GuestAddItemsInput {
+  sessionId: ID!
+  items: [OrderLineInput!]!
+}
+
+input GuestCheckoutInput {
+  sessionId: ID!
+  mode: GuestPaymentMode!
+  contactChannel: ReceiptChannel
+  contactValue: String              # email/phone to receive receipt
+}
+
+enum GuestPaymentMode {
+  QR                                # khách trả ngay qua VietQR
+  COUNTER                           # gửi qua cashier tính tiền tại quầy
+}
+
+input CallStaffInput {
+  sessionId: ID!
+  reason: CallReason!
+  note: String
+}
+
+enum CallReason { ASSISTANCE WATER REFILL UTENSILS ELSE }
+
+# ============================================================================
+# REVIEWS / FEEDBACK
+# ============================================================================
+
+type Review implements Node {
+  id: ID!
+  order: Order
+  booking: Booking
+  guestSession: GuestSession
+  customer: LoyaltyCustomer
+  rating: Int!                      # 1-5
+  comment: String
+  tags: [String!]!                  # "slow", "friendly", "price"...
+  createdAt: DateTime!
+  staffReply: String
+  staffRepliedAt: DateTime
+  staffRepliedBy: Viewer
+}
+
+input CreateReviewInput {
+  orderId: ID
+  bookingId: ID
+  sessionId: ID
+  rating: Int!
+  comment: String
+  tags: [String!]
+}
+
+input ReviewFilter {
+  minRating: Int
+  maxRating: Int
+  hasReply: Boolean
+  dateFrom: DateTime
+  dateTo: DateTime
+}
+
+# ============================================================================
+# INVENTORY — INGREDIENTS & RECIPES (BOM)
+# ============================================================================
+
+type Ingredient implements Node {
+  id: ID!
+  name: String!
+  emoji: String
+  unit: String!                     # "g" | "ml" | "pcs" | "kg" | "l"
+  stock: Decimal!
+  reorderPoint: Decimal!
+  costPerUnit: Decimal!
+  supplier: String
+  supplierRef: Supplier             # resolved supplier entity if linked
+  lastRestockedAt: DateTime
+  isActive: Boolean!
+}
+
+type Supplier implements Node {
+  id: ID!
+  name: String!
+  phone: String
+  email: String
+  address: String
+  leadTimeDays: Int!
+}
+
+type Recipe implements Node {
+  id: ID!
+  menuItem: MenuItem!
+  lines: [RecipeLine!]!
+  laborMinutes: Int!
+  yields: Int!                      # portions per batch
+  totalCost: Decimal!               # computed from ingredients
+  grossMargin: Float!               # (price - cost) / price
+}
+
+type RecipeLine {
+  ingredient: Ingredient!
+  quantity: Decimal!
+  waste: Decimal!                   # expected waste factor (0-1)
+}
+
+input CreateIngredientInput {
+  name: String!
+  unit: String!
+  stock: Decimal!
+  reorderPoint: Decimal!
+  costPerUnit: Decimal!
+  supplierId: ID
+  emoji: String
+}
+
+input AdjustIngredientStockInput {
+  ingredientId: ID!
+  delta: Decimal!
+  reason: StockAdjustReason!
+  note: String
+}
+
+enum StockAdjustReason { RESTOCK WASTE USAGE CORRECTION RETURN }
+
+input SaveRecipeInput {
+  menuItemId: ID!
+  lines: [RecipeLineInput!]!
+  laborMinutes: Int!
+  yields: Int!
+}
+
+input RecipeLineInput {
+  ingredientId: ID!
+  quantity: Decimal!
+  waste: Decimal = 0
+}
+
+type StockMovement implements Node {
+  id: ID!
+  ingredient: Ingredient!
+  delta: Decimal!                   # negative = consumed
+  reason: StockAdjustReason!
+  note: String
+  orderId: ID                       # if auto-deducted from order
+  createdBy: Viewer
+  createdAt: DateTime!
+}
+
+input StockMovementFilter {
+  ingredientIds: [ID!]
+  reasons: [StockAdjustReason!]
+  dateFrom: DateTime
+  dateTo: DateTime
+}
+
+# ============================================================================
+# HR — STAFF, SHIFTS, TIMESHEETS
+# ============================================================================
+
+enum StaffStatus { ACTIVE LEAVE INACTIVE }
+enum ShiftStatus { SCHEDULED CLOCKED_IN COMPLETED ABSENT }
+
+type Staff implements Node {
+  id: ID!
+  name: String!
+  initials: String!
+  phone: String!
+  email: String!
+  role: UserRole!
+  status: StaffStatus!
+  pinMasked: String!                # last 2 digits only "****42"
+  joinedAt: Date!
+  hourlyRate: Decimal!
+  thisWeekHours: Float!
+  thisMonthHours: Float!
+  thisMonthRevenue: Decimal         # if tracked (for cashier/waiter)
+  avatarColor: String               # gradient token
+}
+
+type Shift implements Node {
+  id: ID!
+  staff: Staff!
+  date: Date!
+  startTime: String!                # "HH:mm"
+  endTime: String!
+  role: UserRole!
+  status: ShiftStatus!
+  clockedInAt: DateTime
+  clockedOutAt: DateTime
+  note: String
+}
+
+type TimesheetEntry implements Node {
+  id: ID!
+  staff: Staff!
+  shift: Shift
+  clockedInAt: DateTime!
+  clockedOutAt: DateTime
+  hours: Float!                     # computed when clocked out
+  earning: Decimal!                 # hours * hourlyRate
+}
+
+type PayrollSummary {
+  staff: Staff!
+  periodFrom: Date!
+  periodTo: Date!
+  hoursWorked: Float!
+  hourlyRate: Decimal!
+  basePay: Decimal!
+  tips: Decimal!
+  bonuses: Decimal!
+  deductions: Decimal!
+  total: Decimal!
+}
+
+input StaffFilter {
+  search: String
+  roles: [UserRole!]
+  statuses: [StaffStatus!]
+}
+
+input CreateStaffInput {
+  name: String!
+  phone: String!
+  email: String!
+  role: UserRole!
+  pin: String!
+  hourlyRate: Decimal!
+  joinedAt: Date
+}
+
+input UpdateStaffInput {
+  id: ID!
+  name: String
+  phone: String
+  email: String
+  role: UserRole
+  hourlyRate: Decimal
+  status: StaffStatus
+}
+
+input CreateShiftInput {
+  staffId: ID!
+  date: Date!
+  startTime: String!
+  endTime: String!
+  note: String
+}
+
+input UpdateShiftInput {
+  id: ID!
+  startTime: String
+  endTime: String
+  status: ShiftStatus
+}
+
+input ClockInput {
+  shiftId: ID!                      # optional; BE can infer from staff + today
+  pin: String!                      # re-confirm identity
+}
+
+input ShiftFilter {
+  staffIds: [ID!]
+  dateFrom: Date
+  dateTo: Date
+  statuses: [ShiftStatus!]
+}
+
+# ============================================================================
 # ROOT — Query
 # ============================================================================
 
@@ -766,6 +1237,44 @@ type Query {
 
   # --- Split bills --------------------------------------------------------
   splitBills(orderId: ID!): [SplitBill!]!
+
+  # --- Waitlist -----------------------------------------------------------
+  waitlistEntries(filter: WaitlistFilter): [WaitlistEntry!]!
+  waitlistEntry(id: ID!): WaitlistEntry
+
+  # --- Voucher / Loyalty --------------------------------------------------
+  vouchers(activeOnly: Boolean = true): [Voucher!]!
+  voucher(code: String!): Voucher
+  validateVoucher(orderId: ID!, code: String!): VoucherApplication!
+  loyaltyCustomers(input: LoyaltyLookupInput!): [LoyaltyCustomer!]!
+  loyaltyCustomer(id: ID!): LoyaltyCustomer
+
+  # --- Bookings -----------------------------------------------------------
+  bookings(filter: BookingFilter): [Booking!]!
+  booking(id: ID!): Booking
+
+  # --- Guest self-order (public, rate-limited) ---------------------------
+  guestSession(id: ID!): GuestSession
+
+  # --- Reviews ------------------------------------------------------------
+  reviews(page: ConnectionArgs, filter: ReviewFilter): [Review!]!
+  review(id: ID!): Review
+
+  # --- Inventory / Recipes ------------------------------------------------
+  ingredients(activeOnly: Boolean = true): [Ingredient!]!
+  ingredient(id: ID!): Ingredient
+  suppliers: [Supplier!]!
+  recipes: [Recipe!]!
+  recipe(menuItemId: ID!): Recipe
+  stockMovements(filter: StockMovementFilter, page: ConnectionArgs): [StockMovement!]!
+
+  # --- HR -----------------------------------------------------------------
+  staff(filter: StaffFilter): [Staff!]!
+  staffMember(id: ID!): Staff
+  shifts(filter: ShiftFilter): [Shift!]!
+  shift(id: ID!): Shift
+  timesheet(staffId: ID!, dateFrom: Date!, dateTo: Date!): [TimesheetEntry!]!
+  payroll(staffId: ID!, from: Date!, to: Date!): PayrollSummary!
 }
 
 # ============================================================================
@@ -819,6 +1328,63 @@ type Mutation {
   restoreMenuItem(menuItemId: ID!): MenuItem!
   sendReceipt(billId: ID!, channel: ReceiptChannel!, recipient: String!): OperationResult!
 
+  # --- Waitlist -----------------------------------------------------------
+  createWaitlistEntry(input: CreateWaitlistEntryInput!): WaitlistEntry!
+  notifyWaitlistEntry(id: ID!): WaitlistEntry!        # gửi SMS
+  seatWaitlistEntry(input: SeatWaitlistEntryInput!): Order!  # create order + link entry
+  cancelWaitlistEntry(id: ID!, reason: String): WaitlistEntry!
+  markWaitlistNoShow(id: ID!): WaitlistEntry!
+
+  # --- Voucher ------------------------------------------------------------
+  applyVoucher(input: ApplyVoucherInput!): VoucherApplication!
+  removeVoucher(orderId: ID!): OperationResult!
+
+  # --- Loyalty ------------------------------------------------------------
+  createLoyaltyCustomer(input: CreateLoyaltyCustomerInput!): LoyaltyCustomer!
+  attachCustomerToOrder(input: AttachCustomerToOrderInput!): Order!
+  detachCustomerFromOrder(orderId: ID!): Order!
+  redeemPoints(input: RedeemPointsInput!): Order!
+
+  # --- Bookings -----------------------------------------------------------
+  createBooking(input: CreateBookingInput!): Booking!
+  updateBooking(input: UpdateBookingInput!): Booking!
+  confirmBooking(id: ID!): Booking!
+  sendBookingReminder(id: ID!): Booking!
+  markBookingArrived(id: ID!): Order!         # creates Order from booking
+  cancelBooking(id: ID!, reason: String): Booking!
+  markBookingNoShow(id: ID!): Booking!
+
+  # --- Guest self-order (public) -----------------------------------------
+  startGuestSession(input: StartGuestSessionInput!): GuestSession!
+  guestAddItems(input: GuestAddItemsInput!): GuestSession!
+  guestCheckout(input: GuestCheckoutInput!): Bill!
+  callStaff(input: CallStaffInput!): OperationResult!
+
+  # --- Reviews ------------------------------------------------------------
+  createReview(input: CreateReviewInput!): Review!
+  replyReview(id: ID!, reply: String!): Review!
+
+  # --- Inventory / Recipes ------------------------------------------------
+  createIngredient(input: CreateIngredientInput!): Ingredient!
+  updateIngredient(id: ID!, input: CreateIngredientInput!): Ingredient!
+  deactivateIngredient(id: ID!): OperationResult!
+  adjustIngredientStock(input: AdjustIngredientStockInput!): Ingredient!
+  saveRecipe(input: SaveRecipeInput!): Recipe!
+  deleteRecipe(menuItemId: ID!): OperationResult!
+
+  # --- HR -----------------------------------------------------------------
+  createStaff(input: CreateStaffInput!): Staff!
+  updateStaff(input: UpdateStaffInput!): Staff!
+  resetStaffPin(id: ID!, newPin: String!): Staff!
+  deactivateStaff(id: ID!): Staff!
+
+  createShift(input: CreateShiftInput!): Shift!
+  updateShift(input: UpdateShiftInput!): Shift!
+  deleteShift(id: ID!): OperationResult!
+  clockIn(input: ClockInput!): Shift!
+  clockOut(input: ClockInput!): Shift!
+  markShiftAbsent(id: ID!, reason: String): Shift!
+
   # --- Profile: transactions ---------------------------------------------
   createInventoryTransaction(input: CreateInventoryTransactionInput!): InventoryTransaction!
   updateInventoryTransaction(input: UpdateInventoryTransactionInput!): InventoryTransaction!
@@ -851,6 +1417,31 @@ type Subscription {
   ticketUpdated(station: Station): KitchenTicket!
   ticketEscalated: KitchenTicket!                 # chỉ manager subscribe
   menuItemUnavailabilityChanged: MenuItem!
+
+  # --- Waitlist realtime --------------------------------------------------
+  waitlistEntryUpdated: WaitlistEntry!
+
+  # --- Booking realtime ---------------------------------------------------
+  bookingUpdated: Booking!
+
+  # --- Guest session realtime (cho waiter biết khi khách thêm món) -------
+  guestSessionUpdated(tableId: ID!): GuestSession!
+  staffCalled: CallStaffEvent!
+
+  # --- Inventory realtime -------------------------------------------------
+  ingredientLowStock: Ingredient!                # fired khi cross reorderPoint
+  stockMovementCreated: StockMovement!
+
+  # --- HR realtime --------------------------------------------------------
+  shiftUpdated: Shift!                            # clock in/out broadcast
+}
+
+type CallStaffEvent {
+  id: ID!
+  table: DiningTable!
+  reason: CallReason!
+  note: String
+  calledAt: DateTime!
 }
 
 enum ReceiptChannel { PRINT EMAIL SMS EINVOICE }
