@@ -291,6 +291,27 @@ input UpdateOrderLineInput {
   note: String
 }
 
+"""
+Move an order from one table to another (khách đổi chỗ). If destination table
+already has an open order, the BE must reject with CONFLICT.
+"""
+input MoveOrderInput {
+  orderId: ID!
+  destinationTableId: ID!
+  reason: String
+}
+
+"""
+Merge multiple orders (typically on adjacent tables when a group arrives bigger
+than expected) into a single order that lives on `primaryTableId`. Merged
+orders are voided with reason "merged into <primary>".
+"""
+input MergeOrdersInput {
+  primaryOrderId: ID!
+  mergeOrderIds: [ID!]!
+  attachTableIds: [ID!]     # optional extra tables to reserve under primary
+}
+
 # ============================================================================
 # BILLS (CHECKOUT / PAYMENT)
 # ============================================================================
@@ -334,6 +355,52 @@ input BillSort { field: BillSortField! = PAID_AT direction: SortDirection! = DES
 
 input CheckoutOrderInput {
   orderId: ID!
+  paymentMethod: PaymentMethod!
+  cashReceived: Decimal
+  tip: Decimal
+  discount: Decimal
+  discountReason: String
+}
+
+"""
+Split 1 order into multiple sub-bills that are checked out independently.
+Strategy = EVEN → divide total equally across `portions` people.
+Strategy = BY_ITEM → assign each line item to a bucket via `itemBuckets`.
+Each resulting SplitBill gets its own paymentMethod at checkout time.
+"""
+enum SplitStrategy { EVEN BY_ITEM }
+
+input SplitOrderInput {
+  orderId: ID!
+  strategy: SplitStrategy!
+  portions: Int             # required when EVEN
+  itemBuckets: [ItemBucketInput!]  # required when BY_ITEM
+  tipDistribution: TipDistribution = PROPORTIONAL
+}
+
+enum TipDistribution { PROPORTIONAL EQUAL ON_PRIMARY }
+
+input ItemBucketInput {
+  bucketIndex: Int!
+  lineIds: [ID!]!           # OrderLine IDs assigned to this bucket
+}
+
+type SplitBill implements Node {
+  id: ID!
+  bucketIndex: Int!
+  sourceOrder: Order!
+  items: [OrderLine!]!
+  subtotal: Decimal!
+  tax: Decimal!
+  tip: Decimal!
+  total: Decimal!
+  status: SplitBillStatus!
+  paidBill: Bill            # set when this sub-bill is checked out
+}
+enum SplitBillStatus { PENDING PAID VOIDED }
+
+input CheckoutSplitBillInput {
+  splitBillId: ID!
   paymentMethod: PaymentMethod!
   cashReceived: Decimal
 }
@@ -560,6 +627,69 @@ type NotificationConnection {
 type NotificationEdge { cursor: String! node: Notification! }
 
 # ============================================================================
+# KITCHEN DISPLAY SYSTEM (KDS)
+# ============================================================================
+
+enum Station { GRILL COLD BAR DESSERT EXPO CUSTOM }
+enum TicketStatus { PENDING PREPARING READY SERVED VOIDED }
+
+"""
+A KitchenTicket is a per-station slice of an Order. An order with items from
+both Grill and Bar produces 2 tickets (one per station) that are bumped
+independently. Parent Order moves to READY only when all its tickets are READY.
+"""
+type KitchenTicket implements Node {
+  id: ID!
+  parentOrder: Order!
+  station: Station!
+  stationLabel: String!     # cho phép station custom name
+  status: TicketStatus!
+  items: [KitchenTicketItem!]!
+  orderNote: String         # ghi chú đơn, denormalized
+  waiterName: String!
+  createdAt: DateTime!
+  startedAt: DateTime
+  bumpedAt: DateTime
+  bumpedBy: Viewer
+  elapsedSeconds: Int!      # computed server-side: (now - createdAt)
+  isEscalated: Boolean!     # true nếu quá threshold
+}
+
+type KitchenTicketItem {
+  id: ID!
+  menuItem: MenuItem!
+  name: String!             # snapshot
+  quantity: Int!
+  modifiers: [String!]!
+  note: String
+  urgent: Boolean!          # allergy, dietary restriction flagging
+  prepDone: Boolean!
+  voided: Boolean!
+}
+
+type AllDayRow {
+  menuItem: MenuItem!
+  made: Int!                # bumped trong ngày
+  preparing: Int!           # đang nấu ở các station
+  remaining: Int!           # stock còn (từ MenuStock.available)
+  isUnavailable: Boolean!
+}
+
+input KitchenTicketFilter {
+  stations: [Station!]
+  statuses: [TicketStatus!]
+  escalatedOnly: Boolean
+}
+
+input MarkMenuItemUnavailableInput {
+  menuItemId: ID!
+  until: UnavailableDuration!
+  reason: String
+}
+
+enum UnavailableDuration { FIFTEEN_MIN END_OF_SHIFT END_OF_DAY INDEFINITE }
+
+# ============================================================================
 # ROOT — Query
 # ============================================================================
 
@@ -628,6 +758,14 @@ type Query {
 
   # --- Exports ------------------------------------------------------------
   exportJob(id: ID!): ExportJob
+
+  # --- KDS ----------------------------------------------------------------
+  kitchenTickets(filter: KitchenTicketFilter): [KitchenTicket!]!
+  kitchenTicket(id: ID!): KitchenTicket
+  allDaySummary(station: Station, date: Date): [AllDayRow!]!
+
+  # --- Split bills --------------------------------------------------------
+  splitBills(orderId: ID!): [SplitBill!]!
 }
 
 # ============================================================================
@@ -660,10 +798,26 @@ type Mutation {
   addOrderItems(input: AddOrderItemsInput!): Order!
   updateOrderLine(input: UpdateOrderLineInput!): Order!
   cancelOrder(id: ID!, reason: String): Order!
+  moveOrder(input: MoveOrderInput!): Order!
+  mergeOrders(input: MergeOrdersInput!): Order!
 
   # --- Bills / checkout ---------------------------------------------------
   checkoutOrder(input: CheckoutOrderInput!): Bill!
   voidBill(id: ID!, reason: String!): OperationResult!
+
+  # --- Split bill --------------------------------------------------------
+  splitOrder(input: SplitOrderInput!): [SplitBill!]!
+  checkoutSplitBill(input: CheckoutSplitBillInput!): Bill!
+  voidSplit(orderId: ID!): OperationResult!      # gộp lại các SplitBill PENDING về order gốc
+
+  # --- KDS ----------------------------------------------------------------
+  startTicket(ticketId: ID!): KitchenTicket!
+  bumpTicket(ticketId: ID!): KitchenTicket!
+  recallTicket(ticketId: ID!): KitchenTicket!
+  togglePrepDone(itemId: ID!, done: Boolean!): KitchenTicketItem!
+  markMenuItemUnavailable(input: MarkMenuItemUnavailableInput!): MenuItem!
+  restoreMenuItem(menuItemId: ID!): MenuItem!
+  sendReceipt(billId: ID!, channel: ReceiptChannel!, recipient: String!): OperationResult!
 
   # --- Profile: transactions ---------------------------------------------
   createInventoryTransaction(input: CreateInventoryTransactionInput!): InventoryTransaction!
@@ -691,4 +845,12 @@ type Subscription {
   tableUpdated: DiningTable!
   notificationReceived: Notification!
   exportJobUpdated(id: ID!): ExportJob!
+
+  # --- KDS realtime -------------------------------------------------------
+  ticketCreated(station: Station): KitchenTicket!
+  ticketUpdated(station: Station): KitchenTicket!
+  ticketEscalated: KitchenTicket!                 # chỉ manager subscribe
+  menuItemUnavailabilityChanged: MenuItem!
 }
+
+enum ReceiptChannel { PRINT EMAIL SMS EINVOICE }

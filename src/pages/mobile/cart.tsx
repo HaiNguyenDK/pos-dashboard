@@ -1,13 +1,26 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { MoreHorizontal, Plus, Trash2 } from "lucide-react"
+import {
+  Ban,
+  Combine,
+  MoreHorizontal,
+  Plus,
+  Replace,
+  StickyNote,
+  Trash2,
+  X,
+} from "lucide-react"
+import { toast } from "sonner"
 
+import { MergeTablesSheet } from "@/components/mobile/merge-tables-sheet"
 import { MobileHeader } from "@/components/mobile/mobile-header"
+import { MoveTableSheet } from "@/components/mobile/move-table-sheet"
 import { StatusChip } from "@/components/mobile/status-chip"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatCurrency } from "@/lib/format"
 import { MENU_ITEMS } from "@/mocks/menu"
+import { TABLES } from "@/mocks/tables"
 
 type Section = "sent" | "new"
 type Line = {
@@ -44,6 +57,11 @@ const TAX_RATE = 0.1
 export function MobileCartPage() {
   const navigate = useNavigate()
   const [lines, setLines] = useState<Line[]>(INITIAL_LINES)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [moveOpen, setMoveOpen] = useState(false)
+  const [mergeOpen, setMergeOpen] = useState(false)
+  const [currentTableName, setCurrentTableName] = useState("A3")
+  const [mergedTables, setMergedTables] = useState<string[]>([])
 
   const sent = lines.filter((l) => l.section === "sent")
   const newLines = lines.filter((l) => l.section === "new")
@@ -75,10 +93,11 @@ export function MobileCartPage() {
     <div className="flex h-full flex-col bg-slate-50">
       <MobileHeader
         title="Đơn #1234"
-        subtitle="Bàn A3 · Cheryl Arema"
+        subtitle={`Bàn ${currentTableName}${mergedTables.length > 0 ? ` + ${mergedTables.join(", ")}` : ""} · Cheryl Arema`}
         right={
           <button
             type="button"
+            onClick={() => setMenuOpen(true)}
             aria-label="Thêm hành động"
             className="flex size-9 items-center justify-center rounded-full hover:bg-slate-100"
           >
@@ -172,7 +191,164 @@ export function MobileCartPage() {
           </Button>
         </div>
       </div>
+
+      {menuOpen ? (
+        <ActionMenu
+          onClose={() => setMenuOpen(false)}
+          onMove={() => {
+            setMenuOpen(false)
+            setMoveOpen(true)
+          }}
+          onMerge={() => {
+            setMenuOpen(false)
+            setMergeOpen(true)
+          }}
+          onEditNote={() => {
+            setMenuOpen(false)
+            toast.info("Sẽ mở dialog ghi chú đơn")
+          }}
+          onCancel={() => {
+            setMenuOpen(false)
+            toast.warning("Huỷ đơn — cần PIN supervisor")
+          }}
+        />
+      ) : null}
+
+      <MoveTableSheet
+        open={moveOpen}
+        currentTableName={currentTableName}
+        onClose={() => setMoveOpen(false)}
+        onConfirm={(destId, reason) => {
+          const dest = TABLES.find((t) => t.id === destId)
+          if (dest) {
+            setCurrentTableName(dest.name)
+            toast.success(
+              `Đã chuyển đơn sang Bàn ${dest.name}${reason ? ` (${reason})` : ""}`
+            )
+          }
+          setMoveOpen(false)
+        }}
+      />
+
+      <MergeTablesSheet
+        open={mergeOpen}
+        primaryTableName={currentTableName}
+        onClose={() => setMergeOpen(false)}
+        onConfirm={(ids) => {
+          const names = ids
+            .map((id) => TABLES.find((t) => t.id === id)?.name)
+            .filter((n): n is string => !!n)
+          setMergedTables(names)
+          toast.success(
+            `Đã ghép bàn ${currentTableName} + ${names.join(", ")}`
+          )
+          setMergeOpen(false)
+        }}
+      />
     </div>
+  )
+}
+
+function ActionMenu({
+  onClose,
+  onMove,
+  onMerge,
+  onEditNote,
+  onCancel,
+}: {
+  onClose: () => void
+  onMove: () => void
+  onMerge: () => void
+  onEditNote: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div className="absolute inset-0 z-40 flex items-end">
+      <div
+        className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <div className="relative w-full rounded-t-3xl bg-white pb-6 shadow-xl">
+        <div className="mx-auto mt-2 mb-3 h-1 w-10 rounded-full bg-slate-300" />
+        <div className="flex items-center justify-between border-b px-5 pb-3">
+          <div className="text-base font-bold text-slate-900">Hành động</div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Đóng"
+            className="flex size-9 items-center justify-center rounded-full hover:bg-slate-100"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+        <div className="divide-y">
+          <ActionRow icon={StickyNote} label="Sửa ghi chú đơn" onClick={onEditNote} />
+          <ActionRow
+            icon={Replace}
+            label="Chuyển bàn"
+            desc="Đổi sang bàn khác cho khách"
+            onClick={onMove}
+          />
+          <ActionRow
+            icon={Combine}
+            label="Ghép bàn"
+            desc="Thêm bàn phụ cho nhóm đông"
+            onClick={onMerge}
+          />
+          <ActionRow
+            icon={Ban}
+            label="Huỷ đơn"
+            desc="Cần PIN supervisor"
+            onClick={onCancel}
+            danger
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ActionRow({
+  icon: Icon,
+  label,
+  desc,
+  onClick,
+  danger,
+}: {
+  icon: typeof Ban
+  label: string
+  desc?: string
+  onClick: () => void
+  danger?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 px-5 py-3.5 text-left hover:bg-slate-50"
+    >
+      <div
+        className={cn(
+          "flex size-10 items-center justify-center rounded-xl",
+          danger ? "bg-rose-50 text-rose-600" : "bg-slate-100 text-slate-700"
+        )}
+      >
+        <Icon className="size-4" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div
+          className={cn(
+            "text-sm font-bold",
+            danger ? "text-rose-600" : "text-slate-900"
+          )}
+        >
+          {label}
+        </div>
+        {desc ? (
+          <div className="text-[11px] text-slate-500">{desc}</div>
+        ) : null}
+      </div>
+    </button>
   )
 }
 

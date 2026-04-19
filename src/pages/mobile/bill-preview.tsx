@@ -118,7 +118,11 @@ export function MobileBillPreviewPage() {
             active={tip > 0}
             onClick={() => setTip(tip > 0 ? 0 : 30)}
           />
-          <ActionChip icon={Scissors} label="Chia bill" onClick={() => {}} />
+          <ActionChip
+            icon={Scissors}
+            label="Chia bill"
+            onClick={() => navigate("/mobile/bill/split")}
+          />
         </div>
       </div>
 

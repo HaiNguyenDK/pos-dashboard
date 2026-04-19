@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom"
 import { AppShell } from "@/components/layout/app-shell"
 import { AuthLayout } from "@/components/layout/auth-layout"
 import { ResetLayout } from "@/components/layout/reset-layout"
+import { KdsShell } from "@/components/kds/kds-shell"
 import { MobileShell } from "@/components/mobile/mobile-shell"
 import { ForgotPasswordPage } from "@/pages/auth/forgot-password"
 import { LoginPage } from "@/pages/auth/login"
@@ -25,6 +26,7 @@ import { MobileTableDetailPage } from "@/pages/mobile/table-detail"
 import { MobileMenuPage } from "@/pages/mobile/menu"
 import { MobileCartPage } from "@/pages/mobile/cart"
 import { MobileBillPreviewPage } from "@/pages/mobile/bill-preview"
+import { MobileBillSplitPage } from "@/pages/mobile/bill-split"
 import { MobilePaymentPage } from "@/pages/mobile/payment"
 import { MobileCashPayPage } from "@/pages/mobile/cash-pay"
 import { MobileQrPayPage } from "@/pages/mobile/qr-pay"
@@ -32,6 +34,12 @@ import { MobilePaymentSuccessPage } from "@/pages/mobile/payment-success"
 import { MobileHistoryPage } from "@/pages/mobile/history"
 import { MobileSettingsPage } from "@/pages/mobile/settings"
 import { MobileNotificationsPage } from "@/pages/mobile/notifications"
+import { KdsStationPickerPage } from "@/pages/kds"
+import { KdsGridPage } from "@/pages/kds/grid"
+import { KdsTicketDetailPage } from "@/pages/kds/ticket-detail"
+import { KdsSettingsPage } from "@/pages/kds/settings"
+import { KdsExpoPage } from "@/pages/kds/expo"
+import { KdsAllDayPage } from "@/pages/kds/all-day"
 import { PosProvider } from "@/store/pos-context"
 
 export function App() {
@@ -76,6 +84,7 @@ export function App() {
           <Route path="/mobile/menu" element={<MobileMenuPage />} />
           <Route path="/mobile/cart" element={<MobileCartPage />} />
           <Route path="/mobile/bill" element={<MobileBillPreviewPage />} />
+          <Route path="/mobile/bill/split" element={<MobileBillSplitPage />} />
           <Route path="/mobile/payment" element={<MobilePaymentPage />} />
           <Route path="/mobile/pay/cash" element={<MobileCashPayPage />} />
           <Route path="/mobile/pay/qr" element={<MobileQrPayPage />} />
@@ -83,6 +92,15 @@ export function App() {
           <Route path="/mobile/history" element={<MobileHistoryPage />} />
           <Route path="/mobile/settings" element={<MobileSettingsPage />} />
           <Route path="/mobile/notifications" element={<MobileNotificationsPage />} />
+        </Route>
+
+        <Route element={<KdsShell />}>
+          <Route path="/kds" element={<KdsStationPickerPage />} />
+          <Route path="/kds/grid" element={<KdsGridPage />} />
+          <Route path="/kds/ticket/:id" element={<KdsTicketDetailPage />} />
+          <Route path="/kds/settings" element={<KdsSettingsPage />} />
+          <Route path="/kds/expo" element={<KdsExpoPage />} />
+          <Route path="/kds/all-day" element={<KdsAllDayPage />} />
         </Route>
 
         <Route path="*" element={<NotFoundPage />} />

@@ -10,6 +10,7 @@ import {
   LogIn,
   QrCode,
   Receipt,
+  Scissors,
   Settings,
   ShoppingBag,
   Table2,
@@ -75,6 +76,14 @@ const SCREENS: ScreenCard[] = [
     to: "/mobile/bill",
     icon: FileText,
     accent: "bg-emerald-50 text-emerald-600",
+  },
+  {
+    no: "7b",
+    title: "Split Bill",
+    subtitle: "Chia đều / chia theo món",
+    to: "/mobile/bill/split",
+    icon: Scissors,
+    accent: "bg-teal-50 text-teal-600",
   },
   {
     no: "8",
