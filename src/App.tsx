@@ -28,6 +28,7 @@ import { SystemIndexPage } from "@/pages/system"
 import { SystemJourneyPage } from "@/pages/system/journey"
 import { SystemOperationsPage } from "@/pages/system/operations"
 import { SystemDataFlowPage } from "@/pages/system/data-flow"
+import { SystemRoadmapPage } from "@/pages/system/roadmap"
 import { SelectTablePage } from "@/pages/select-table"
 import { NotFoundPage } from "@/pages/not-found"
 import { MobileIndexPage } from "@/pages/mobile"
@@ -128,6 +129,7 @@ export function App() {
           <Route path="/system/journey" element={<SystemJourneyPage />} />
           <Route path="/system/operations" element={<SystemOperationsPage />} />
           <Route path="/system/data-flow" element={<SystemDataFlowPage />} />
+          <Route path="/system/roadmap" element={<SystemRoadmapPage />} />
         </Route>
 
         <Route element={<KdsShell />}>

@@ -8,6 +8,7 @@ const PAGES = [
   { to: "/system/journey", label: "Hành trình khách" },
   { to: "/system/operations", label: "Vận hành 1 ngày" },
   { to: "/system/data-flow", label: "Luồng dữ liệu đơn" },
+  { to: "/system/roadmap", label: "Roadmap" },
 ]
 
 export function SystemShell() {
